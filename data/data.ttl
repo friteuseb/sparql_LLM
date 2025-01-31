@@ -1,0 +1,61 @@
+@prefix : <http://example.org/permis-construire#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+
+# Premier permis avec toutes les propriétés
+:Permis_2024_001 a :PermisConstructe ;
+    :reference "PC_2024_001" ;
+    :dateDepot "2024-01-15"^^xsd:date ;
+    :surface "120.5"^^xsd:decimal ;
+    :hauteur "8.5"^^xsd:decimal ;
+    :empriseSol "80.3"^^xsd:decimal ;
+    :aPourDemandeur :Demandeur_001 ;
+    :situeSurParcelle :Parcelle_001 ;
+    :aPourDecision :Decision_001 ;
+    :aPourDocument :Document_001 .
+
+:Demandeur_001 a :Demandeur ;
+    :nom "Jean Dupont" ;
+    :email "jean.dupont@email.com" .
+
+:Parcelle_001 a :Parcelle ;
+    :adresse "15 rue des Lilas" ;
+    :superficie "450.0"^^xsd:decimal ;
+    :situeDansZone :Zone_UA .
+
+:Zone_UA a :ZoneUrbanisme ;
+    rdfs:label "Zone Urbaine A" .
+
+:Decision_001 a :Decision ;
+    :dateDecision "2024-02-15"^^xsd:date ;
+    :statutDecision "Accordé" .
+
+:Document_001 a :Document ;
+    rdfs:label "Plans architecturaux" .
+
+# Second permis
+:Permis_2024_002 a :PermisConstructe ;
+    :reference "PC_2024_002" ;
+    :dateDepot "2024-01-20"^^xsd:date ;
+    :surface "85.2"^^xsd:decimal ;
+    :hauteur "6.5"^^xsd:decimal ;
+    :empriseSol "60.1"^^xsd:decimal ;
+    :aPourDemandeur :Demandeur_002 ;
+    :situeSurParcelle :Parcelle_002 ;
+    :aPourDecision :Decision_002 .
+
+:Demandeur_002 a :Demandeur ;
+    :nom "Marie Martin" ;
+    :email "marie.martin@email.com" .
+
+:Parcelle_002 a :Parcelle ;
+    :adresse "28 avenue des Roses" ;
+    :superficie "380.0"^^xsd:decimal ;
+    :situeDansZone :Zone_UB .
+
+:Zone_UB a :ZoneUrbanisme ;
+    rdfs:label "Zone Urbaine B" .
+
+:Decision_002 a :Decision ;
+    :dateDecision "2024-02-20"^^xsd:date ;
+    :statutDecision "En cours d'instruction" .

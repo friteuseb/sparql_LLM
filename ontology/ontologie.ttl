@@ -1,0 +1,129 @@
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+@prefix :  <http://example.org/permis-construire#> .
+
+# Classes
+:PermisConstructe rdf:type owl:Class ;
+    rdfs:label "Permis de construire"@fr ;
+    rdfs:comment "Demande de permis de construire"@fr .
+
+:Demandeur rdf:type owl:Class ;
+    rdfs:label "Demandeur"@fr ;
+    rdfs:comment "Personne ou entité demandant le permis"@fr .
+
+:Parcelle rdf:type owl:Class ;
+    rdfs:label "Parcelle"@fr ;
+    rdfs:comment "Terrain concerné par la demande"@fr .
+
+:TypeConstruction rdf:type owl:Class ;
+    rdfs:label "Type de construction"@fr .
+
+:ZoneUrbanisme rdf:type owl:Class ;
+    rdfs:label "Zone d'urbanisme"@fr .
+
+:Reglementation rdf:type owl:Class ;
+    rdfs:label "Réglementation"@fr .
+
+:Decision rdf:type owl:Class ;
+    rdfs:label "Décision"@fr .
+
+:TypeZone rdf:type owl:Class ;
+    rdfs:label "Type de zone"@fr .
+
+:Contrainte rdf:type owl:Class ;
+    rdfs:label "Contrainte"@fr .
+
+:EtatDossier rdf:type owl:Class ;
+    rdfs:label "État du dossier"@fr .
+
+:Document rdf:type owl:Class ;
+    rdfs:label "Document"@fr .
+
+# Object Properties
+:aPourDemandeur rdf:type owl:ObjectProperty ;
+    rdfs:domain :PermisConstructe ;
+    rdfs:range :Demandeur ;
+    rdfs:label "a pour demandeur"@fr .
+
+:situeSurParcelle rdf:type owl:ObjectProperty ;
+    rdfs:domain :PermisConstructe ;
+    rdfs:range :Parcelle ;
+    rdfs:label "situé sur la parcelle"@fr .
+
+:respecteReglementation rdf:type owl:ObjectProperty ;
+    rdfs:domain :PermisConstructe ;
+    rdfs:range :Reglementation ;
+    rdfs:label "respecte la réglementation"@fr .
+
+:aPourDecision rdf:type owl:ObjectProperty ;
+    rdfs:domain :PermisConstructe ;
+    rdfs:range :Decision ;
+    rdfs:label "a pour décision"@fr .
+
+:situeDansZone rdf:type owl:ObjectProperty ;
+    rdfs:domain :Parcelle ;
+    rdfs:range :ZoneUrbanisme ;
+    rdfs:label "situé dans la zone"@fr .
+
+:aPourDocument rdf:type owl:ObjectProperty ;
+    rdfs:domain :PermisConstructe ;
+    rdfs:range :Document ;
+    rdfs:label "a pour document"@fr .
+
+# Data Properties
+:dateDepot rdf:type owl:DatatypeProperty ;
+    rdfs:domain :PermisConstructe ;
+    rdfs:range xsd:date ;
+    rdfs:label "date de dépôt"@fr .
+
+:surface rdf:type owl:DatatypeProperty ;
+    rdfs:domain :PermisConstructe ;
+    rdfs:range xsd:decimal ;
+    rdfs:label "surface"@fr .
+
+:reference rdf:type owl:DatatypeProperty ;
+    rdfs:domain :PermisConstructe ;
+    rdfs:range xsd:string ;
+    rdfs:label "référence"@fr .
+
+:hauteur rdf:type owl:DatatypeProperty ;
+    rdfs:domain :PermisConstructe ;
+    rdfs:range xsd:decimal ;
+    rdfs:label "hauteur"@fr .
+
+:empriseSol rdf:type owl:DatatypeProperty ;
+    rdfs:domain :PermisConstructe ;
+    rdfs:range xsd:decimal ;
+    rdfs:label "emprise au sol"@fr .
+
+:dateDecision rdf:type owl:DatatypeProperty ;
+    rdfs:domain :Decision ;
+    rdfs:range xsd:date ;
+    rdfs:label "date de décision"@fr .
+
+:statutDecision rdf:type owl:DatatypeProperty ;
+    rdfs:domain :Decision ;
+    rdfs:range xsd:string ;
+    rdfs:label "statut de la décision"@fr .
+
+:adresse rdf:type owl:DatatypeProperty ;
+    rdfs:domain :Parcelle ;
+    rdfs:range xsd:string ;
+    rdfs:label "adresse"@fr .
+
+:superficie rdf:type owl:DatatypeProperty ;
+    rdfs:domain :Parcelle ;
+    rdfs:range xsd:decimal ;
+    rdfs:label "superficie"@fr .
+
+:nom rdf:type owl:DatatypeProperty ;
+    rdfs:domain :Demandeur ;
+    rdfs:range xsd:string ;
+    rdfs:label "nom"@fr .
+
+:email rdf:type owl:DatatypeProperty ;
+    rdfs:domain :Demandeur ;
+    rdfs:range xsd:string ;
+    rdfs:label "email"@fr .

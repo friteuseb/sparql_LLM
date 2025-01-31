@@ -1,0 +1,4 @@
+node_modules/
+.env
+fuseki/.DS_Store
+*.log
