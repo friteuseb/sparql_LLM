@@ -1,21 +1,28 @@
-# Dependencies
+# Node dependencies
 node_modules/
 
 # Environment variables
 .env
 
-# Fuseki files
-fuseki/apache-jena-fuseki-5.3.0/
-fuseki/run/
-fuseki/logs/
-fuseki/*.jar
-fuseki/*.bat
-fuseki/*.sh
+# Fuseki - ignore complete directory structure
+fuseki/
 
 # System files
 .DS_Store
+Thumbs.db
 *.log
+*.pid
 
-# Runtime data
-fuseki/databases/
-fuseki/backups/
+# IDE specific files
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Runtime data and logs
+*.log
+logs/
+*.pid
+
+# Keep these files
+
