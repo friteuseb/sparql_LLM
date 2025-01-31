@@ -12,40 +12,57 @@ const anthropic = new Anthropic({
     apiKey: process.env.ANTHROPIC_API_KEY,
 });
 
-// Fonction pour nettoyer et formater la requête SPARQL
+// Fonction pour nettoyer et valider une requête SPARQL
 function formatSparqlQuery(query) {
-    return query
-        .replace(/\r\n/g, '\n')         // Normalise les sauts de ligne
-        .replace(/^\s+|\s+$/g, '')      // Enlève les espaces en début et fin
-        .replace(/\s*\n\s*/g, '\n')     // Normalise les espaces autour des sauts de ligne
-        .replace(/\n+/g, '\n')          // Supprime les sauts de ligne multiples
-        .replace(/\s+/g, ' ');          // Normalise les espaces multiples
-}
+    // Normalisation de base
+    let formattedQuery = query
+        .replace(/\r\n/g, '\n')
+        .replace(/^\s+|\s+$/g, '')
+        .replace(/\s*\n\s*/g, '\n')
+        .replace(/\n+/g, '\n')
+        .replace(/\s+/g, ' ');
 
-// Fonction pour échapper les caractères spéciaux dans le JSON
-function escapeJsonString(str) {
-    return str.replace(/\n/g, '\\n')
-              .replace(/\r/g, '\\r')
-              .replace(/\t/g, '\\t')
-              .replace(/"/g, '\\"');
+    // Gestion des guillemets
+    formattedQuery = formattedQuery.replace(/"([^"]*)"(?=\s*\.)/g, '\'$1\'');
+
+    // Vérification de la présence du préfixe correct
+    if (!formattedQuery.includes('PREFIX : <http://example.org/permis-construire#>')) {
+        formattedQuery = 'PREFIX : <http://example.org/permis-construire#>\n' + formattedQuery;
+    }
+
+    return formattedQuery;
 }
 
 app.post('/translate', async (req, res) => {
     try {
         const { question } = req.body;
 
-        // Instructions système pour forcer un format de réponse spécifique
         const systemPrompt = `Tu es un expert SPARQL qui traduit les questions en requêtes SPARQL.
+        IMPORTANT: 
+        1. Dans les requêtes SPARQL, utilise TOUJOURS des guillemets simples (') pour les chaînes de caractères.
+        
+        2. Pour les statuts de décision, utilise les équivalences suivantes :
+           - 'validé', 'approuvé', 'accepté' → utiliser 'Accordé' dans la requête
+           - 'en cours', 'en attente' → utiliser 'En cours d\'instruction' dans la requête
+           - 'refusé', 'rejeté' → utiliser 'Refusé' dans la requête
+
+        3. Pour les demandeurs, considère les variations possibles :
+           - Prénom Nom ou Nom Prénom (ex: "Marie Martin" ou "Martin Marie")
+           - Avec ou sans accents
+        
         Tu dois TOUJOURS répondre avec un objet JSON valide contenant exactement trois champs :
         - sparqlQuery : la requête SPARQL complète
-        - explanation : l'explication en français
+        - explanation : l'explication en français (inclure les synonymes utilisés si pertinent)
         - resultFormat : "table" ou "cards"
         
         La requête SPARQL doit toujours :
         1. Commencer par le préfixe : PREFIX : <http://example.org/permis-construire#>
         2. Être correctement indentée
         3. Utiliser les bons noms de propriétés (:aPourDemandeur, :situeSurParcelle, etc.)
-        4. Ne pas contenir de caractères spéciaux non échappés`;
+        4. Utiliser des guillemets simples (') pour les chaînes de caractères
+        5. Ne pas contenir de caractères spéciaux non échappés
+        
+        Si la question mentionne un statut qui est un synonyme (ex: "validé"), inclure dans l'explication que tu utilises le terme officiel "Accordé" dans la requête.`;
 
         const message = await anthropic.messages.create({
             model: "claude-3-opus-20240229",
@@ -56,36 +73,36 @@ app.post('/translate', async (req, res) => {
                 role: "user",
                 content: `Voici l'ontologie des permis de construire :
                 
-                Classes:
-                :PermisConstructe - Permis de construire
-                :Demandeur - Personne demandant le permis
-                :Parcelle - Terrain concerné
-                :ZoneUrbanisme - Zone d'urbanisme
-                :Decision - Décision sur le permis
-                
-                Propriétés:
-                :reference - Référence du permis
-                :dateDepot - Date de dépôt
-                :surface - Surface en m²
-                :hauteur - Hauteur en m
-                :empriseSol - Emprise au sol en m²
-                :nom - Nom du demandeur
-                :email - Email du demandeur
-                :adresse - Adresse de la parcelle
-                :superficie - Superficie de la parcelle
-                :statutDecision - Statut de la décision
-                :aPourDemandeur - Relie un permis à son demandeur
-                :situeSurParcelle - Relie un permis à sa parcelle
-                :aPourDecision - Relie un permis à sa décision
+Classes:
+:PermisConstructe - Permis de construire
+:Demandeur - Personne demandant le permis
+:Parcelle - Terrain concerné
+:ZoneUrbanisme - Zone d'urbanisme
+:Decision - Décision sur le permis
 
-                Question : "${question}"
+Propriétés:
+:reference - Référence du permis
+:dateDepot - Date de dépôt
+:surface - Surface en m²
+:hauteur - Hauteur en m
+:empriseSol - Emprise au sol en m²
+:nom - Nom du demandeur
+:email - Email du demandeur
+:adresse - Adresse de la parcelle
+:superficie - Superficie de la parcelle
+:statutDecision - Statut de la décision
+:aPourDemandeur - Relie un permis à son demandeur
+:situeSurParcelle - Relie un permis à sa parcelle
+:aPourDecision - Relie un permis à sa décision
 
-                Réponds avec un objet JSON contenant uniquement :
-                {
-                    "sparqlQuery": "la requête SPARQL complète et bien formatée",
-                    "explanation": "explication en français",
-                    "resultFormat": "table ou cards"
-                }`
+Question : "${question}"
+
+Réponds avec un objet JSON contenant uniquement :
+{
+    "sparqlQuery": "la requête SPARQL complète et bien formatée",
+    "explanation": "explication en français",
+    "resultFormat": "table ou cards"
+}`
             }]
         });
 
@@ -101,17 +118,14 @@ app.post('/translate', async (req, res) => {
             // Convertir le contenu en objet JavaScript
             let parsedContent;
             try {
-                // Essayer d'évaluer le contenu comme un objet JavaScript
-                // Note: on utilise une fonction qui va évaluer la string comme du code JS
                 parsedContent = new Function('return ' + content)();
             } catch (evalError) {
                 console.error('Erreur d\'évaluation:', evalError);
-                // Si l'évaluation échoue, on essaie de nettoyer encore plus le contenu
                 content = content
-                    .replace(/\n/g, ' ')  // Remplace les retours à la ligne par des espaces
-                    .replace(/\s+/g, ' ') // Normalise les espaces multiples
-                    .replace(/\\n/g, ' ') // Remplace les \n littéraux par des espaces
-                    .replace(/\\"/g, '"') // Gère les guillemets échappés
+                    .replace(/\n/g, ' ')
+                    .replace(/\s+/g, ' ')
+                    .replace(/\\n/g, ' ')
+                    .replace(/\\"/g, '"')
                     .trim();
                 parsedContent = JSON.parse(content);
             }
