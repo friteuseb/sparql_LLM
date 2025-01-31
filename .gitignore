@@ -1,4 +1,21 @@
+# Dependencies
 node_modules/
+
+# Environment variables
 .env
-fuseki/.DS_Store
+
+# Fuseki files
+fuseki/apache-jena-fuseki-5.3.0/
+fuseki/run/
+fuseki/logs/
+fuseki/*.jar
+fuseki/*.bat
+fuseki/*.sh
+
+# System files
+.DS_Store
 *.log
+
+# Runtime data
+fuseki/databases/
+fuseki/backups/
