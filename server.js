@@ -12,82 +12,123 @@ const anthropic = new Anthropic({
     apiKey: process.env.ANTHROPIC_API_KEY,
 });
 
+// Fonction pour nettoyer et formater la requête SPARQL
+function formatSparqlQuery(query) {
+    return query
+        .replace(/\r\n/g, '\n')         // Normalise les sauts de ligne
+        .replace(/^\s+|\s+$/g, '')      // Enlève les espaces en début et fin
+        .replace(/\s*\n\s*/g, '\n')     // Normalise les espaces autour des sauts de ligne
+        .replace(/\n+/g, '\n')          // Supprime les sauts de ligne multiples
+        .replace(/\s+/g, ' ');          // Normalise les espaces multiples
+}
+
+// Fonction pour échapper les caractères spéciaux dans le JSON
+function escapeJsonString(str) {
+    return str.replace(/\n/g, '\\n')
+              .replace(/\r/g, '\\r')
+              .replace(/\t/g, '\\t')
+              .replace(/"/g, '\\"');
+}
+
 app.post('/translate', async (req, res) => {
     try {
         const { question } = req.body;
+
+        // Instructions système pour forcer un format de réponse spécifique
+        const systemPrompt = `Tu es un expert SPARQL qui traduit les questions en requêtes SPARQL.
+        Tu dois TOUJOURS répondre avec un objet JSON valide contenant exactement trois champs :
+        - sparqlQuery : la requête SPARQL complète
+        - explanation : l'explication en français
+        - resultFormat : "table" ou "cards"
         
+        La requête SPARQL doit toujours :
+        1. Commencer par le préfixe : PREFIX : <http://example.org/permis-construire#>
+        2. Être correctement indentée
+        3. Utiliser les bons noms de propriétés (:aPourDemandeur, :situeSurParcelle, etc.)
+        4. Ne pas contenir de caractères spéciaux non échappés`;
+
         const message = await anthropic.messages.create({
             model: "claude-3-opus-20240229",
             max_tokens: 1024,
-            temperature: 0, // Réduire la créativité pour des réponses plus consistantes
-            system: "Vous êtes un expert en SPARQL qui traduit les questions en langage naturel en requêtes SPARQL valides. Répondez TOUJOURS avec un objet JSON valide contenant exactement sparqlQuery, explanation et resultFormat.",
+            temperature: 0,
+            system: systemPrompt,
             messages: [{
                 role: "user",
-                content: `Tu es un expert en SPARQL qui aide à traduire des questions en langage naturel en requêtes SPARQL valides.
-                    
-                    Voici l'ontologie des permis de construire :
-                    
-                    Classes:
-                    :PermisConstructe - Permis de construire
-                    :Demandeur - Personne demandant le permis
-                    :Parcelle - Terrain concerné
-                    :ZoneUrbanisme - Zone d'urbanisme
-                    :Decision - Décision sur le permis
-                    
-                    Propriétés:
-                    :reference - Référence du permis
-                    :dateDepot - Date de dépôt
-                    :surface - Surface en m²
-                    :hauteur - Hauteur en m
-                    :empriseSol - Emprise au sol en m²
-                    :nom - Nom du demandeur
-                    :email - Email du demandeur
-                    :adresse - Adresse de la parcelle
-                    :superficie - Superficie de la parcelle
-                    :statutDecision - Statut de la décision
+                content: `Voici l'ontologie des permis de construire :
+                
+                Classes:
+                :PermisConstructe - Permis de construire
+                :Demandeur - Personne demandant le permis
+                :Parcelle - Terrain concerné
+                :ZoneUrbanisme - Zone d'urbanisme
+                :Decision - Décision sur le permis
+                
+                Propriétés:
+                :reference - Référence du permis
+                :dateDepot - Date de dépôt
+                :surface - Surface en m²
+                :hauteur - Hauteur en m
+                :empriseSol - Emprise au sol en m²
+                :nom - Nom du demandeur
+                :email - Email du demandeur
+                :adresse - Adresse de la parcelle
+                :superficie - Superficie de la parcelle
+                :statutDecision - Statut de la décision
+                :aPourDemandeur - Relie un permis à son demandeur
+                :situeSurParcelle - Relie un permis à sa parcelle
+                :aPourDecision - Relie un permis à sa décision
 
-                    PREFIX à utiliser : PREFIX : <http://example.org/permis-construire#>
+                Question : "${question}"
 
-                    Question de l'utilisateur : "${question}"
-
-                    Retourne uniquement un objet JSON avec les champs suivants :
-                    - sparqlQuery: la requête SPARQL complète (avec le PREFIX)
-                    - explanation: explication en français de ce que fait la requête
-                    - resultFormat: "table" ou "cards" selon ce qui est le plus approprié`
+                Réponds avec un objet JSON contenant uniquement :
+                {
+                    "sparqlQuery": "la requête SPARQL complète et bien formatée",
+                    "explanation": "explication en français",
+                    "resultFormat": "table ou cards"
+                }`
             }]
         });
 
         let content = message.content[0].text;
-        let jsonResponse;
-
+        
         try {
-            // Tentative de parse du JSON
-            jsonResponse = JSON.parse(content);
+            // Nettoyer la réponse
+            content = content.trim();
+            if (content.startsWith('```json')) {
+                content = content.replace(/```json\n/, '').replace(/\n```$/, '');
+            }
+            
+            // Convertir le contenu en objet JavaScript
+            let parsedContent;
+            try {
+                // Essayer d'évaluer le contenu comme un objet JavaScript
+                // Note: on utilise une fonction qui va évaluer la string comme du code JS
+                parsedContent = new Function('return ' + content)();
+            } catch (evalError) {
+                console.error('Erreur d\'évaluation:', evalError);
+                // Si l'évaluation échoue, on essaie de nettoyer encore plus le contenu
+                content = content
+                    .replace(/\n/g, ' ')  // Remplace les retours à la ligne par des espaces
+                    .replace(/\s+/g, ' ') // Normalise les espaces multiples
+                    .replace(/\\n/g, ' ') // Remplace les \n littéraux par des espaces
+                    .replace(/\\"/g, '"') // Gère les guillemets échappés
+                    .trim();
+                parsedContent = JSON.parse(content);
+            }
+            
+            const jsonResponse = parsedContent;
 
-            // Vérification de la présence des champs requis
+            // Vérification et formatage de la requête SPARQL
+            if (jsonResponse.sparqlQuery) {
+                jsonResponse.sparqlQuery = formatSparqlQuery(jsonResponse.sparqlQuery);
+            }
+
+            // Vérification des champs requis
             if (!jsonResponse.sparqlQuery || !jsonResponse.explanation || !jsonResponse.resultFormat) {
-                throw new Error("Réponse incomplète du LLM");
+                throw new Error("Réponse incomplète");
             }
 
-            // Vérification que la requête SPARQL contient bien le bon préfixe
-            if (!jsonResponse.sparqlQuery.includes('<http://example.org/permis-construire#>')) {
-                jsonResponse.sparqlQuery = jsonResponse.sparqlQuery.replace(
-                    /PREFIX\s+:\s+<[^>]+>/,
-                    'PREFIX : <http://example.org/permis-construire#>'
-                );
-            }
-
-        } catch (parseError) {
-            console.error('Erreur de parsing JSON:', content);
-            return res.status(500).json({ 
-                error: "Format de réponse invalide",
-                details: parseError.message,
-                rawContent: content 
-            });
-        }
-
-        // Exécution de la requête SPARQL sur Fuseki
-        try {
+            // Exécution de la requête SPARQL
             const fusekiResponse = await fetch('http://localhost:3030/permis/query', {
                 method: 'POST',
                 headers: {
@@ -102,8 +143,6 @@ app.post('/translate', async (req, res) => {
             }
 
             const results = await fusekiResponse.json();
-            
-            // Envoi de la réponse complète
             res.json({
                 sparqlQuery: jsonResponse.sparqlQuery,
                 explanation: jsonResponse.explanation,
@@ -111,17 +150,18 @@ app.post('/translate', async (req, res) => {
                 results: results
             });
 
-        } catch (fusekiError) {
-            console.error('Erreur Fuseki:', fusekiError);
-            return res.status(500).json({
-                error: "Erreur d'exécution de la requête SPARQL",
-                details: fusekiError.message
+        } catch (parseError) {
+            console.error('Erreur de parsing JSON:', content);
+            res.status(500).json({
+                error: "Format de réponse invalide",
+                details: parseError.message,
+                rawContent: content
             });
         }
 
     } catch (error) {
         console.error('Erreur générale:', error);
-        res.status(500).json({ 
+        res.status(500).json({
             error: "Erreur du serveur",
             details: error.message
         });
