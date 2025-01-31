@@ -6,7 +6,7 @@
     <style>
         body {
             font-family: Arial, sans-serif;
-            max-width: 1000px;
+            max-width: 800px;
             margin: 0 auto;
             padding: 20px;
         }
@@ -36,18 +36,20 @@
             padding: 10px;
             border-radius: 4px;
             overflow-x: auto;
+            white-space: pre-wrap;
         }
-        .result-card {
-            background: #fff;
-            border: 1px solid #ddd;
+        .error {
+            color: #721c24;
+            background-color: #f8d7da;
+            border: 1px solid #f5c6cb;
+            padding: 10px;
             border-radius: 4px;
-            padding: 15px;
             margin: 10px 0;
         }
         .loading {
             display: none;
+            margin: 10px 0;
             color: #666;
-            font-style: italic;
         }
     </style>
 </head>
@@ -57,21 +59,23 @@
         
         <div class="input-group">
             <input type="text" id="questionInput" 
-                   placeholder="Exemple : Quels sont les permis avec une hauteur supérieure à 7m dans la zone UA ?">
+                   placeholder="Exemple : Quels sont les permis avec une hauteur supérieure à 7m ?">
             <button onclick="handleQuestion()">Rechercher</button>
         </div>
 
-        <div id="explanation" style="display: none;" class="result-card">
-            <h3>Explication :</h3>
-            <p id="explanationText"></p>
-        </div>
+        <div id="loading" class="loading">Traitement en cours...</div>
+
+        <div id="error" class="error" style="display: none;"></div>
 
         <div id="sparqlQuery" style="display: none;">
-            <h3>Requête SPARQL :</h3>
+            <h3>Requête SPARQL générée :</h3>
             <pre id="queryDisplay"></pre>
         </div>
 
-        <div id="loading" class="loading">Traduction et analyse en cours...</div>
+        <div id="explanation" style="display: none;">
+            <h3>Explication :</h3>
+            <pre id="explanationDisplay"></pre>
+        </div>
 
         <div id="results" style="display: none;">
             <h3>Résultats :</h3>
@@ -82,214 +86,154 @@
     <script>
         async function handleQuestion() {
             const questionInput = document.getElementById('questionInput');
-            const question = questionInput.value;
-            
-            document.getElementById('loading').style.display = 'block';
-            
+            const loadingDiv = document.getElementById('loading');
+            const errorDiv = document.getElementById('error');
+            const question = questionInput.value.trim();
+
+            if (!question) {
+                showError("Veuillez entrer une question.");
+                return;
+            }
+
+            // Reset displays
+            errorDiv.style.display = 'none';
+            document.getElementById('sparqlQuery').style.display = 'none';
+            document.getElementById('explanation').style.display = 'none';
+            document.getElementById('results').style.display = 'none';
+            loadingDiv.style.display = 'block';
+
             try {
-                // 1. Obtenir la requête SPARQL via l'API Claude
-                const llmResponse = await fetch('http://localhost:3001/translate', {
+                // Call the translation API
+                const translationResponse = await fetch('http://localhost:3001/translate', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
                     },
                     body: JSON.stringify({ question })
-                }).then(r => r.json());
+                });
+
+                if (!translationResponse.ok) {
+                    throw new Error(`HTTP error! status: ${translationResponse.status}`);
+                }
+
+                const llmResponse = await translationResponse.json();
                 
-                // 2. Afficher l'explication
-                const explanationDiv = document.getElementById('explanation');
-                const explanationText = document.getElementById('explanationText');
-                explanationText.textContent = llmResponse.explanation;
-                explanationDiv.style.display = 'block';
+                // Validate LLM response
+                if (!llmResponse || !llmResponse.sparqlQuery) {
+                    throw new Error("La réponse du LLM est invalide ou incomplète.");
+                }
 
-                // 3. Afficher la requête générée
+                // Display SPARQL query
                 const queryDisplay = document.getElementById('queryDisplay');
-                const sparqlQueryDiv = document.getElementById('sparqlQuery');
                 queryDisplay.textContent = llmResponse.sparqlQuery;
-                sparqlQueryDiv.style.display = 'block';
+                document.getElementById('sparqlQuery').style.display = 'block';
 
-                // 4. Exécuter la requête sur Fuseki
-                const results = await fetch('http://localhost:3030/permis/query', {
+                // Display explanation if available
+                if (llmResponse.explanation) {
+                    const explanationDisplay = document.getElementById('explanationDisplay');
+                    explanationDisplay.textContent = llmResponse.explanation;
+                    document.getElementById('explanation').style.display = 'block';
+                }
+
+                // Query Fuseki
+                const fusekiResponse = await fetch('http://localhost:3030/permis/query', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/sparql-query',
                         'Accept': 'application/json'
                     },
                     body: llmResponse.sparqlQuery
-                }).then(r => r.json());
+                });
 
-                // 5. Formater et afficher les résultats
-                const resultsDiv = document.getElementById('results');
-                resultsDiv.style.display = 'block';
-                formatResults(results, llmResponse.resultFormat);
+                if (!fusekiResponse.ok) {
+                    throw new Error(`Erreur Fuseki: ${fusekiResponse.statusText}`);
+                }
+
+                const results = await fusekiResponse.json();
                 
+                // Display results
+                const resultsDisplay = document.getElementById('resultsDisplay');
+                formatResults(results, llmResponse.resultFormat || 'table');
+                document.getElementById('results').style.display = 'block';
+
             } catch (error) {
                 console.error('Error:', error);
-                document.getElementById('resultsDisplay').innerHTML = 
-                    `<div class="result-card error">Une erreur s'est produite : ${error.message}</div>`;
+                showError(error.message);
             } finally {
-                document.getElementById('loading').style.display = 'none';
+                loadingDiv.style.display = 'none';
             }
         }
 
-        const ONTOLOGY = `
-            PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
-            PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-            PREFIX : <http://example.org/permis-construire#>
-            
-            Classes:
-            :PermisConstructe - Permis de construire
-            :Demandeur - Personne demandant le permis
-            :Parcelle - Terrain concerné
-            :ZoneUrbanisme - Zone d'urbanisme
-            :Decision - Décision sur le permis
-            
-            Propriétés:
-            :reference - Référence du permis
-            :dateDepot - Date de dépôt
-            :surface - Surface en m²
-            :hauteur - Hauteur en m
-            :empriseSol - Emprise au sol en m²
-            :nom - Nom du demandeur
-            :email - Email du demandeur
-            :adresse - Adresse de la parcelle
-            :superficie - Superficie de la parcelle
-            :statutDecision - Statut de la décision
-        `;
-
-        async function askLLM(question) {
-            // Simulons pour l'instant la réponse du LLM
-            // À remplacer par votre appel API réel au LLM
-            const prompt = `
-                Tu es un expert en SPARQL qui aide à traduire des questions en langage naturel en requêtes SPARQL valides.
-                Voici l'ontologie :
-                ${ONTOLOGY}
-                
-                Question : "${question}"
-                
-                Génère une requête SPARQL valide qui répond à cette question.
-                Format de réponse: JSON avec les champs:
-                - sparqlQuery: la requête SPARQL
-                - explanation: explication en français de ce que fait la requête
-                - resultFormat: comment formater la réponse
-            `;
-            
-            // Simulation de réponse LLM - À remplacer par l'appel API réel
-            if (question.toLowerCase().includes('hauteur')) {
-                return {
-                    sparqlQuery: `
-                        PREFIX : <http://example.org/permis-construire#>
-                        SELECT ?ref ?hauteur
-                        WHERE {
-                            ?permis a :PermisConstructe ;
-                                    :reference ?ref ;
-                                    :hauteur ?hauteur .
-                            FILTER(?hauteur > 7)
-                        }
-                        ORDER BY DESC(?hauteur)`,
-                    explanation: "Cette requête recherche tous les permis dont la hauteur dépasse 7 mètres, triés par hauteur décroissante",
-                    resultFormat: "table"
-                };
-            }
-            // Ajoutez d'autres cas selon vos besoins
+        function showError(message) {
+            const errorDiv = document.getElementById('error');
+            errorDiv.textContent = message;
+            errorDiv.style.display = 'block';
         }
 
-        function formatResults(results, format) {
-            const resultsContainer = document.getElementById('resultsDisplay');
-            resultsContainer.innerHTML = '';
+        function formatResults(results, format = 'table') {
+            const resultsDisplay = document.getElementById('resultsDisplay');
+            resultsDisplay.innerHTML = '';
 
-            if (!results.results || !results.results.bindings) {
-                resultsContainer.innerHTML = '<div class="result-card">Aucun résultat trouvé</div>';
+            if (!results.results || !results.results.bindings || results.results.bindings.length === 0) {
+                resultsDisplay.innerHTML = '<div class="error">Aucun résultat trouvé</div>';
                 return;
             }
 
             const bindings = results.results.bindings;
-            
+
             if (format === 'table') {
-                // Créer un tableau HTML
                 const table = document.createElement('table');
                 table.style.width = '100%';
                 table.style.borderCollapse = 'collapse';
-                
-                // En-têtes
+                table.style.marginTop = '10px';
+
+                // Headers
                 const headers = Object.keys(bindings[0]);
+                const thead = document.createElement('thead');
                 const headerRow = document.createElement('tr');
                 headers.forEach(header => {
                     const th = document.createElement('th');
                     th.textContent = header;
                     th.style.padding = '8px';
-                    th.style.backgroundColor = '#f8f9fa';
-                    th.style.borderBottom = '2px solid #dee2e6';
+                    th.style.borderBottom = '2px solid #ddd';
+                    th.style.textAlign = 'left';
                     headerRow.appendChild(th);
                 });
-                table.appendChild(headerRow);
+                thead.appendChild(headerRow);
+                table.appendChild(thead);
 
-                // Données
+                // Data rows
+                const tbody = document.createElement('tbody');
                 bindings.forEach(row => {
                     const tr = document.createElement('tr');
                     headers.forEach(header => {
                         const td = document.createElement('td');
                         td.textContent = row[header].value;
                         td.style.padding = '8px';
-                        td.style.borderBottom = '1px solid #dee2e6';
+                        td.style.borderBottom = '1px solid #ddd';
                         tr.appendChild(td);
                     });
-                    table.appendChild(tr);
+                    tbody.appendChild(tr);
                 });
+                table.appendChild(tbody);
 
-                resultsContainer.appendChild(table);
+                resultsDisplay.appendChild(table);
             } else {
-                // Format carte par défaut
-                bindings.forEach(result => {
+                // Card format
+                bindings.forEach(row => {
                     const card = document.createElement('div');
-                    card.className = 'result-card';
+                    card.style.padding = '10px';
+                    card.style.margin = '10px 0';
+                    card.style.border = '1px solid #ddd';
+                    card.style.borderRadius = '4px';
+
                     let content = '';
-                    Object.entries(result).forEach(([key, value]) => {
+                    for (const [key, value] of Object.entries(row)) {
                         content += `<strong>${key}:</strong> ${value.value}<br>`;
-                    });
+                    }
                     card.innerHTML = content;
-                    resultsContainer.appendChild(card);
+                    resultsDisplay.appendChild(card);
                 });
-            }
-        }
-
-        async function handleQuestion() {
-            const questionInput = document.getElementById('questionInput');
-            const question = questionInput.value;
-            
-            document.getElementById('loading').style.display = 'block';
-            
-            try {
-                // 1. Obtenir la requête SPARQL via LLM
-                const llmResponse = await askLLM(question);
-                
-                // 2. Afficher la requête générée
-                const queryDisplay = document.getElementById('queryDisplay');
-                const sparqlQueryDiv = document.getElementById('sparqlQuery');
-                queryDisplay.textContent = llmResponse.sparqlQuery;
-                sparqlQueryDiv.style.display = 'block';
-
-                // 3. Exécuter la requête sur Fuseki
-                const results = await fetch('http://localhost:3030/permis/query', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/sparql-query',
-                        'Accept': 'application/json'
-                    },
-                    body: llmResponse.sparqlQuery
-                }).then(r => r.json());
-
-                // 4. Formater et afficher les résultats
-                const resultsDiv = document.getElementById('results');
-                resultsDiv.style.display = 'block';
-                formatResults(results, llmResponse.resultFormat);
-                
-            } catch (error) {
-                console.error('Error:', error);
-                document.getElementById('resultsDisplay').innerHTML = 
-                    `<div class="result-card error">Une erreur s'est produite : ${error.message}</div>`;
-            } finally {
-                document.getElementById('loading').style.display = 'none';
             }
         }
     </script>
